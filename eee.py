@@ -12,9 +12,10 @@ from langchain_community.retrievers import BM25Retriever
 # -----------------------------
 # 경로 / 설정
 # -----------------------------
-TEXT_FILES_PATH = "cleaned_texts"
-DB_FAISS_PATH = "faiss_index"
-DB_BM25_PATH = "bm25_retriever.pkl"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEXT_FILES_PATH = os.path.join(BASE_DIR, "cleaned_texts") # 절대 경로로 변환
+DB_FAISS_PATH = os.path.join(BASE_DIR, "faiss_index")
+DB_BM25_PATH = os.path.join(BASE_DIR, "bm25_retriever.pkl")
 
 # 최신 한국어 임베딩
 EMBEDDING_MODEL = "BAAI/bge-m3"
@@ -126,3 +127,4 @@ def create_vector_db():
 
 if __name__ == "__main__":
     create_vector_db()
+
