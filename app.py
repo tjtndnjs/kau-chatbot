@@ -170,14 +170,8 @@ def get_gemini_response_stream(prompt: str):
         st.error(f"Gemini 오류: {e}")
         yield ""
 
-
 # -------------------------
-# 7. 이전 질문 기억 삭제됨
-# -------------------------
-
-
-# -------------------------
-# 8. Streamlit UI
+# 7. Streamlit UI
 # -------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -339,6 +333,7 @@ if user_input := st.chat_input("질문을 입력하세요."):
 
         placeholder.markdown(final_content)
         st.session_state.messages.append({"role": "assistant", "content": final_content})
+
 
 
 
