@@ -1,0 +1,179 @@
+/* ------------------------------------------- */
+/* KAU 챗봇 - 마하 캐릭터 테마 CSS             */
+/* PANTONE 컬러 가이드 기반 디자인             */
+/* ------------------------------------------- */
+
+/* 컬러 팔레트 정의 */
+:root {
+    --kau-navy: #002c62;        /* PANTONE 661 C - 메인 */
+    --kau-light-blue: #00A9E0;  /* PANTONE 2995 C - 강조/보조 */
+    --kau-yellow: #FFCD00;      /* PANTONE 109 C - 포인트 */
+    --kau-cool-gray: #F0F2F6;   /* PANTONE Cool Gray 1 C - 배경/구분선 */
+    --text-dark: #333333;
+    --text-light: #ffffff;
+}
+
+/* 1. 전체 배경: 하늘과 구름 느낌의 그라데이션 */
+body {
+    background: linear-gradient(180deg, #E3F2FD 0%, #FFFFFF 100%); /* 구름 -> 흰색 */
+    background-attachment: fixed;
+    font-family: "Malgun Gothic", "AppleSDGothicNeo", sans-serif;
+    color: var(--text-dark);
+}
+
+/* 2. 메인 채팅창 컨테이너 */
+.chat-container {
+    height: 600px;
+    overflow-y: scroll;
+    padding: 20px;
+    background-color: rgba(255, 255, 255, 0.7); /* 반투명 흰색 강화 */
+    border-radius: 18px; /* 더 둥글게 */
+    border: 1px solid var(--kau-cool-gray);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08); /* 그림자 강화 */
+}
+
+/* 3. 말풍선 공통 스타일 */
+.message-row {
+    display: flex;
+    align-items: flex-end; /* 말풍선 아랫부분 정렬 */
+    margin-bottom: 18px; /* 간격 늘림 */
+}
+
+/* AI (마하) 말풍선 - 왼쪽 */
+.ai-row {
+    justify-content: flex-start;
+}
+.ai-bubble {
+    background-color: #FFFFFF;
+    color: var(--text-dark);
+    padding: 12px 18px; /* 패딩 늘림 */
+    border-radius: 0px 18px 18px 18px; /* 카톡처럼 왼쪽 위 뾰족하게, 더 둥글게 */
+    border: 1px solid var(--kau-cool-gray);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    max-width: 75%; /* 폭 늘림 */
+    line-height: 1.5; /* 줄 간격 */
+}
+.ai-name {
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: var(--kau-navy); /* 마하 이름색 KAU Navy */
+}
+
+/* 사용자 말풍선 - 오른쪽 (KAU Navy 적용) */
+.user-row {
+    justify-content: flex-end;
+}
+.user-bubble {
+    background-color: var(--kau-navy); /* ★요청하신 KAU 메인 컬러 */
+    color: var(--text-light);
+    padding: 12px 18px; /* 패딩 늘림 */
+    border-radius: 18px 0px 18px 18px; /* 오른쪽 위 뾰족하게, 더 둥글게 */
+    max-width: 75%; /* 폭 늘림 */
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    line-height: 1.5; /* 줄 간격 */
+}
+
+/* 4. 프로필 이미지 스타일 */
+.profile-img {
+    width: 50px; /* 크기 키움 */
+    height: 50px;
+    border-radius: 50%;
+    margin-right: 12px; /* 간격 늘림 */
+    flex-shrink: 0; /* 말풍선 줄어들 때 이미지도 같이 줄지 않도록 */
+    object-fit: contain; /* 이미지가 잘리지 않도록 */
+    background-color: transparent; /* 배경색 제거 (이미지 자체 배경이 있다면) */
+}
+
+/* 5. 사이드바 스타일 */
+.sidebar {
+    background-color: var(--kau-cool-gray); /* 사이드바 배경 Cool Gray */
+    padding: 25px;
+    height: 100vh;
+    border-right: 1px solid rgba(0,0,0,0.05);
+    box-shadow: 2px 0 8px rgba(0,0,0,0.05);
+}
+.sidebar .nav-tabs .nav-link {
+    color: var(--kau-navy); /* 탭 글씨색 */
+    border: none;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease-in-out;
+}
+.sidebar .nav-tabs .nav-link.active {
+    color: var(--kau-navy);
+    background-color: transparent;
+    border-bottom: 3px solid var(--kau-navy); /* 활성화된 탭 밑줄 */
+    font-weight: bold;
+}
+.sidebar .tab-content {
+    background-color: transparent;
+    padding: 15px 0;
+}
+
+/* 6. 버튼 스타일 */
+.st-button > button, .btn-primary {
+    background-color: var(--kau-navy) !important; /* KAU Navy 메인 버튼 */
+    border-color: var(--kau-navy) !important;
+    font-weight: bold;
+    border-radius: 25px !important; /* 더 둥글게 */
+    padding: 10px 20px !important;
+}
+.btn-primary:hover {
+    background-color: var(--kau-light-blue) !important; /* 호버 시 라이트 블루 */
+    border-color: var(--kau-light-blue) !important;
+}
+.btn-secondary { /* 지우기 버튼 */
+    border-radius: 25px !important;
+    padding: 10px 20px !important;
+    color: var(--kau-navy) !important;
+    border-color: var(--kau-navy) !important;
+}
+.btn-secondary:hover {
+    background-color: var(--kau-light-blue) !important;
+    color: white !important;
+    border-color: var(--kau-light-blue) !important;
+}
+
+/* 7. 입력창 스타일 */
+.form-control {
+    border-radius: 25px !important; /* 더 둥글게 */
+    padding: 10px 20px !important;
+    border: 1px solid var(--kau-cool-gray) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
+}
+.form-control:focus {
+    border-color: var(--kau-light-blue) !important;
+    box-shadow: 0 0 0 0.25rem rgba(0, 169, 224, 0.25) !important; /* 라이트 블루 포커스 효과 */
+}
+
+/* 8. 로딩 메시지 스타일 */
+.loading-text {
+    color: var(--kau-yellow); /* ★노란색 포인트로 변경 */
+    font-weight: bold;
+    font-size: 0.95rem;
+    text-align: center;
+    margin-top: 15px;
+    animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+    0% { opacity: 0.4; }
+    50% { opacity: 1; }
+    100% { opacity: 0.4; }
+}
+
+/* 스크롤바 커스터마이징 (웹킷 브라우저) */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--kau-light-blue); /* 스크롤바 색상도 하늘색으로 */
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--kau-navy);
+}
