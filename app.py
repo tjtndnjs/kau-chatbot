@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import pickle
 
@@ -128,7 +128,7 @@ class EnsembleRetriever:
 ensemble_retriever = EnsembleRetriever(
     retrievers=[bm25_retriever, faiss_retriever],
     weights=[0.3, 0.7],   # 수정된 가중치
-    k=3,
+    k=5,
 )
 
 
@@ -215,12 +215,12 @@ if user_input := st.chat_input("질문을 입력하세요."):
                 if key not in bm25_seen:
                     bm25_seen.add(key)
                     bm25_unique.append(d)
-                if len(bm25_unique) >= 15:
+                if len(bm25_unique) >= 10:
                     break
 
             print("\n--- 🟡 BM25 검색 결과 ---")
             for i, d in enumerate(bm25_unique, 1):
-                print(f"[BM25 {i}] [{d.metadata.get('title')}] ({d.metadata.get('source')})")
+                print(f"[BM25 {i}] {d.metadata.get('title')}")
 
             # ------------------------------
             # FAISS 검색 (중복 제거 포함 15개)
@@ -234,33 +234,43 @@ if user_input := st.chat_input("질문을 입력하세요."):
                 if key not in faiss_seen:
                     faiss_seen.add(key)
                     faiss_unique.append(d)
-                if len(faiss_unique) >= 15:
+                if len(faiss_unique) >= 10:
                     break
 
             print("\n--- 🔵 FAISS 검색 결과 ---")
             for i, d in enumerate(faiss_unique, 1):
-                print(f"[FAISS {i}] [{d.metadata.get('title')}] ({d.metadata.get('source')})")
+                print(f"[FAISS {i}] {d.metadata.get('title')}")
 
             # ------------------------------
             # 앙상블 최종
             # ------------------------------
             docs = get_relevant_documents(combined_query)
 
+            # 🔥 최종 중복 제거
+            final_seen = set()
+            unique_final_docs = []
+
+            for d in docs:
+                key = f"{d.metadata.get('source','')}_{d.metadata.get('title','')}"
+                if key not in final_seen:
+                    final_seen.add(key)
+                    unique_final_docs.append(d)
+
             print("\n--- 🔴 앙상블 최종 검색 결과 ---")
-            for i, d in enumerate(docs, 1):
+            for i, d in enumerate(unique_final_docs, 1):
                 print(f"[FINAL {i}] [{d.metadata.get('title')}] ({d.metadata.get('source')})")
 
             print("====================================================")
 
-            # ------------------------------
-            # LLM 문맥 구성
-            # ------------------------------
+            # 이후 LLM 문맥 생성 시에도 unique_final_docs 사용
             context = ""
-            for i, d in enumerate(docs):
+            for i, d in enumerate(unique_final_docs):
                 context += f"--- 문서 {i+1} ---\n"
                 context += f"제목: {d.metadata.get('title')}\n"
                 context += f"출처: {d.metadata.get('source')}\n"
                 context += d.metadata.get("raw_content", d.page_content) + "\n\n"
+
+            # LLM 프롬프트 생성도 이걸로 유지됨
 
             final_prompt = (
                 system_message
