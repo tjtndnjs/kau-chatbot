@@ -159,27 +159,25 @@ def update_chat(send_click, enter_submit, food_click, sub_click, cal_click, lib_
     elif trigger_id == "btn-calendar": user_text = "남은 2025년 학사일정 전체 알려줘"
     elif trigger_id == "btn-library": user_text = "도서관 자리 있어?"
 
+   # app.py 의 update_chat 함수 내부 수정
+
     if user_text:
         history.append({"speaker": "user", "content": user_text})
-        try:
-             # 여기서 rag_core의 함수를 호출!
-            response_text = rag_core.get_ai_response(user_text)
-            ai_response_payload = response_text
-        except Exception as e:
-            ai_response_payload = f"오류가 발생했습니다: {e}"
+        
+        ai_response_payload = None 
 
-        # --- 기능별 답변 로직 ---
+        # --- 기능별 답변 로직 (순서 중요!) ---
         
         # 1. 학식
         if "학식" in user_text:
-            get_kau_menu() # 연결 시도 (더미)
+            get_kau_menu() # 연결 시도
             ai_response_payload = html.Div([
                 html.Strong("🍱 오늘의 학생식당 메뉴"),
                 html.P("학교 홈페이지에서 실시간 식단표를 가져왔습니다.", className="small text-muted mb-2"),
                 dbc.Button("이번 주 전체 메뉴 보기", href="https://kau.ac.kr/kaulife/foodmenu.php", target="_blank", color="warning", className="rounded-pill fw-bold w-100")
             ])
 
-        # 2. 지하철 (실제 실시간 반영 시간표)
+        # 2. 지하철
         elif "지하철" in user_text:
             now_str = datetime.now().strftime("%H:%M")
             up_next = [t for t in SUBWAY_UP if t > now_str][:2]
@@ -202,7 +200,7 @@ def update_chat(send_click, enter_submit, food_click, sub_click, cal_click, lib_
                 dbc.Button("좌석 현황 실시간 보기", href="http://210.119.25.31/Webseat/domian5.asp", target="_blank", color="success", size="sm", className="rounded-pill fw-bold")
             ])
 
-        # 4. 학사일정 (월별 검색)
+        # 4. 학사일정
         elif "학사" in user_text or "일정" in user_text:
             target_month = next((m for m in ["11", "12", "1", "2"] if f"{m}월" in user_text), None)
             if target_month:
@@ -215,9 +213,14 @@ def update_chat(send_click, enter_submit, food_click, sub_click, cal_click, lib_
                     html.H6("1월 (2026)", className="mt-2 badge bg-secondary"), html.Ul([html.Li(f"{d} : {n}") for d, n in ACADEMIC_CALENDAR["1"]], className="mb-0"),
                 ])
         
-        # 5. 일반 대화
+        # 5. 일반 대화 (위의 키워드에 안 걸렸을 때만 AI 호출)
         else:
-            ai_response_payload = f"'{user_text}'에 대한 답변입니다."
+            try:
+                # 여기서 AI 호출
+                response_text = rag_core.get_ai_response(user_text)
+                ai_response_payload = response_text
+            except Exception as e:
+                ai_response_payload = f"오류가 발생했습니다: {e}"
 
         history.append({"speaker": "ai", "content": ai_response_payload})
 
