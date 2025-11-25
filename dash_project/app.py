@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 import requests
 import urllib3
+import rag_core
 
 # SSL 경고 무시 (학교 사이트 접속 시 인증서 문제 방지)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -160,8 +161,12 @@ def update_chat(send_click, enter_submit, food_click, sub_click, cal_click, lib_
 
     if user_text:
         history.append({"speaker": "user", "content": user_text})
-        time.sleep(0.5) # AI 생각하는 시간 연출
-        ai_response_payload = None
+        try:
+             # 여기서 rag_core의 함수를 호출!
+            response_text = rag_core.get_ai_response(user_text)
+            ai_response_payload = response_text
+        except Exception as e:
+            ai_response_payload = f"오류가 발생했습니다: {e}"
 
         # --- 기능별 답변 로직 ---
         
