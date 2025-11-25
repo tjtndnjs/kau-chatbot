@@ -1,12 +1,9 @@
-# 1. 웹사이트(Frontend) 구동용
 dash
 dash-bootstrap-components
 gunicorn
 requests
 beautifulsoup4
 pandas
-
-# 2. AI 및 RAG(Backend) 구동용
 langchain
 langchain-community
 langchain-core
@@ -15,8 +12,6 @@ faiss-cpu
 sentence-transformers
 rank_bm25
 google-generativeai
-
-# 3. 기타 유틸리티
 python-dotenv
 Pillow
 tiktoken
