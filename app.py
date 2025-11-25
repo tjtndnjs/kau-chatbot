@@ -200,9 +200,9 @@ if user_input := st.chat_input("질문을 입력하세요."):
 
             combined_query = user_input.strip()
             # 터미널에 출력하는 부분 (필요하면 주석 지우고 사용)
-            print("=" * 50)
-            print(f"Query: {combined_query}")
-            #
+            #print("=" * 50)
+            #print(f"Query: {combined_query}")
+            
             # ------------------------------
             # BM25 검색 (중복 제거 포함 15개)
             # ------------------------------
@@ -218,10 +218,10 @@ if user_input := st.chat_input("질문을 입력하세요."):
                 if len(bm25_unique) >= 10:
                     break
             #검색 결과 터미널에 출력하는 부분
-            print("\n--- 🟡 BM25 검색 결과 ---")
-            for i, d in enumerate(bm25_unique, 1):
-                print(f"[BM25 {i}] {d.metadata.get('title')}")
-            #
+            #print("\n--- 🟡 BM25 검색 결과 ---")
+            #for i, d in enumerate(bm25_unique, 1):
+            #    print(f"[BM25 {i}] {d.metadata.get('title')}")
+            
             # ------------------------------
             # FAISS 검색 (중복 제거 포함 15개)
             # ------------------------------
@@ -237,10 +237,10 @@ if user_input := st.chat_input("질문을 입력하세요."):
                 if len(faiss_unique) >= 10:
                     break
             #검색 결과 터미널에 출력
-            print("\n--- 🔵 FAISS 검색 결과 ---")
-            for i, d in enumerate(faiss_unique, 1):
-                print(f"[FAISS {i}] {d.metadata.get('title')}")
-            #
+            #print("\n--- 🔵 FAISS 검색 결과 ---")
+            #for i, d in enumerate(faiss_unique, 1):
+            #    print(f"[FAISS {i}] {d.metadata.get('title')}")
+            
             # ------------------------------
             # 앙상블 최종
             # ------------------------------
@@ -255,13 +255,13 @@ if user_input := st.chat_input("질문을 입력하세요."):
                 if key not in final_seen:
                     final_seen.add(key)
                     unique_final_docs.append(d)
-            #터미널에 출력
-            print("\n--- 🔴 앙상블 최종 검색 결과 ---")
-            for i, d in enumerate(unique_final_docs, 1):
-                print(f"[FINAL {i}] [{d.metadata.get('title')}] ({d.metadata.get('source')})")
+            #터미널에 출력하는 부분
+            #print("\n--- 🔴 앙상블 최종 검색 결과 ---")
+            #for i, d in enumerate(unique_final_docs, 1):
+            #    print(f"[FINAL {i}] [{d.metadata.get('title')}] ({d.metadata.get('source')})")
 
-            print("====================================================")
-            #
+            #print("====================================================")
+            
             # 이후 LLM 문맥 생성 시에도 unique_final_docs 사용
             context = ""
             for i, d in enumerate(unique_final_docs):
@@ -339,5 +339,6 @@ if user_input := st.chat_input("질문을 입력하세요."):
 
         placeholder.markdown(final_content)
         st.session_state.messages.append({"role": "assistant", "content": final_content})
+
 
 
