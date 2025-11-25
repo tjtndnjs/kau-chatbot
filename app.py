@@ -66,8 +66,8 @@ if vector_db is None or bm25_retriever is None:
     st.error("FAISS 또는 BM25 데이터베이스가 로드되지 않아 실행을 중단합니다.")
     st.stop()
 
-faiss_retriever = vector_db.as_retriever(search_kwargs={"k": 15})   # 확장
-bm25_retriever.k = 15                                              # 확장
+faiss_retriever = vector_db.as_retriever(search_kwargs={"k": 10})
+bm25_retriever.k = 10
 
 
 # -------------------------
@@ -339,3 +339,4 @@ if user_input := st.chat_input("질문을 입력하세요."):
 
         placeholder.markdown(final_content)
         st.session_state.messages.append({"role": "assistant", "content": final_content})
+
