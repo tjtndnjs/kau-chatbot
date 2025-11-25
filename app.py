@@ -204,7 +204,7 @@ if user_input := st.chat_input("질문을 입력하세요."):
             #print(f"Query: {combined_query}")
             
             # ------------------------------
-            # BM25 검색 (중복 제거 포함 15개)
+            # BM25 검색 (10개)
             # ------------------------------
             bm25_only = bm25_retriever.invoke(combined_query)
             bm25_seen = set()
@@ -223,7 +223,7 @@ if user_input := st.chat_input("질문을 입력하세요."):
             #    print(f"[BM25 {i}] {d.metadata.get('title')}")
             
             # ------------------------------
-            # FAISS 검색 (중복 제거 포함 15개)
+            # FAISS 검색 (10개)
             # ------------------------------
             faiss_only = faiss_retriever.invoke(combined_query)
             faiss_seen = set()
@@ -339,6 +339,7 @@ if user_input := st.chat_input("질문을 입력하세요."):
 
         placeholder.markdown(final_content)
         st.session_state.messages.append({"role": "assistant", "content": final_content})
+
 
 
 
