@@ -1,4 +1,4 @@
-﻿import requests
+import requests
 from bs4 import BeautifulSoup
 import os
 import re
@@ -103,15 +103,51 @@ def extract_content_from_soup(soup, url):
         main_text, image_urls = "", []
 
         if content_area:
+
+            # 이미지 수집
             for img_tag in content_area.select('img[src]'):
                 image_urls.append(urljoin(url, img_tag['src']))
 
+            # script/style 제거
             for tag in content_area.find_all(['script', 'style']):
                 tag.decompose()
 
-            main_text = content_area.get_text(separator='\n', strip=True)
+            # ----------------------------
+            # ⚡ 새 로직: 본문 + 테이블을 원래 순서대로 조합
+            # ----------------------------
+            result_lines = []
 
-        # 첨부파일 수집
+            for elem in content_area.children:
+                # 텍스트 요소일 경우
+                if elem.name is None:
+                    text = elem.strip()
+                    if text:
+                        result_lines.append(text)
+
+                # 테이블일 경우 → 테이블 파싱해서 삽입
+                elif elem.name == "table":
+                    table_rows = []
+                    for tr in elem.find_all("tr"):
+                        cols = []
+                        for td in tr.find_all(["td", "th"]):
+                            cell = td.get_text(separator=" ", strip=True)
+                            cell = re.sub(r'\s+', ' ', cell)
+                            cols.append(cell)
+                        if cols:
+                            table_rows.append(" | ".join(cols))
+                    if table_rows:
+                        result_lines.append("\n".join(table_rows))
+
+                # p, div 등 다른 태그의 텍스트 처리
+                else:
+                    text = elem.get_text(separator="\n", strip=True)
+                    if text:
+                        result_lines.append(text)
+
+            # 최종 main_text 구성
+            main_text = "\n".join(result_lines)
+
+        # 첨부파일
         attachments = []
 
         attachment_li = soup.select_one('li.attatch a[href]')
@@ -135,6 +171,7 @@ def extract_content_from_soup(soup, url):
         print(f"       -> ❌ 웹 페이지 파싱 오류: {e}")
         return "제목 없음", "본문 없음", [], []
 
+   
 
 # ----------------------------
 # 5. 크롤링 함수
@@ -230,7 +267,7 @@ def start_crawling(start_url, headers, output_folder="cleaned_texts", max_pages=
 # 6. 실행
 # ----------------------------
 if __name__ == "__main__":
-    start_url = 'https://kau.ac.kr/kaulife/acdnoti.php?searchkey=&searchvalue=&code=s1201&page=1&mode=read&seq=9767'
+    start_url = 'https://kau.ac.kr/kaulife/acdnoti.php?searchkey=&searchvalue=&code=s1201&page=&mode=read&seq=9897'
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                       'AppleWebKit/537.36 (KHTML, like Gecko) '
