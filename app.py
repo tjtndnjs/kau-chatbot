@@ -1,340 +1,485 @@
-import os
-import re
-import pickle
+import dash
+from dash import html, dcc, Input, Output, State, callback_context, ALL
+import dash_bootstrap_components as dbc
+from datetime import datetime
+import requests
+import urllib3
 
-import streamlit as st
-import google.generativeai as genai
+# 💡 rag_core 모듈 더미 처리
+try:
+    import rag_core
+except ImportError:
+    class MockRag:
+        def get_ai_response(self, text):
+            return f"**{text}**에 대한 답변입니다. (rag_core 모듈 필요)"
+    rag_core = MockRag()
 
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.retrievers import BM25Retriever
-from langchain_core.documents import Document
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# -------------------------
-# 1. 초기 설정
-# -------------------------
-st.set_page_config(page_title="한국항공대학교 RAG 챗봇", page_icon="✈️")
-st.title("✈️ 한국항공대학교 RAG 챗봇")
-st.caption("궁금한 것을 물어보시면 교내 정보를 찾아 답변해 드립니다.")
-
-DB_FAISS_PATH = r"C:\Users\sswon\source\repos\PythonApplication1\PythonApplication1\faiss_index"
-DB_BM25_PATH = r"C:\Users\sswon\source\repos\PythonApplication1\PythonApplication1\bm25_retriever.pkl"
-
-EMBEDDING_MODEL = "BAAI/bge-m3"
-
-
-# -------------------------
-# 2. Vector DB + BM25 로딩
-# -------------------------
-@st.cache_resource
-def load_vector_db():
-    if not os.path.exists(DB_FAISS_PATH):
-        return None
-    try:
-        embeddings = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        )
-        db = FAISS.load_local(
-            DB_FAISS_PATH,
-            embeddings,
-            allow_dangerous_deserialization=True,
-        )
-        return db
-    except Exception as e:
-        st.error(f"Vector DB 로딩 오류: {e}")
-        return None
-
-
-@st.cache_resource
-def load_bm25_retriever():
-    if not os.path.exists(DB_BM25_PATH):
-        return None
-    try:
-        with open(DB_BM25_PATH, "rb") as f:
-            return pickle.load(f)
-    except Exception as e:
-        st.error(f"BM25 로딩 오류: {e}")
-        return None
-
-
-vector_db = load_vector_db()
-bm25_retriever: BM25Retriever = load_bm25_retriever()
-
-if vector_db is None or bm25_retriever is None:
-    st.error("FAISS 또는 BM25 데이터베이스가 로드되지 않아 실행을 중단합니다.")
-    st.stop()
-
-faiss_retriever = vector_db.as_retriever(search_kwargs={"k": 10})
-bm25_retriever.k = 10
-
-
-# -------------------------
-# 4. Ensemble Retriever (최적화 버전)
-# -------------------------
-class EnsembleRetriever:
-    def __init__(self, retrievers, weights=None, k=3):
-        self.retrievers = retrievers
-        self.weights = weights or [1.0] * len(retrievers)
-        self.k = k
-
-    def _fetch_docs(self, retriever, query):
-        if hasattr(retriever, "invoke"):
-            try:
-                return retriever.invoke(query) or []
-            except Exception:
-                pass
-
-        if hasattr(retriever, "get_relevant_documents"):
-            try:
-                return retriever.get_relevant_documents(query) or []
-            except Exception:
-                pass
-
-        return []
-
-    def invoke(self, query):
-        scored = {}
-        seen_docs = {}
-
-        for retriever, weight in zip(self.retrievers, self.weights):
-            docs = self._fetch_docs(retriever, query)
-
-            # 🔥 retriever별 최대 10개만 사용
-            docs = docs[:10]
-
-            for rank, doc in enumerate(docs):
-                key = (doc.page_content, tuple(sorted(doc.metadata.items())))
-                score = weight * (10 - rank)
-
-
-                if key not in scored:
-                    scored[key] = score
-                    seen_docs[key] = doc
-                else:
-                    scored[key] += score
-
-        # 🔥 점수순 정렬
-        sorted_keys = sorted(scored.keys(), key=lambda k: -scored[k])
-
-        result_docs = []
-        for key in sorted_keys[: self.k]:
-            result_docs.append(seen_docs[key])
-
-        return result_docs
-
-
-ensemble_retriever = EnsembleRetriever(
-    retrievers=[bm25_retriever, faiss_retriever],
-    weights=[0.3, 0.7],   # 수정된 가중치
-    k=5,
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
 )
+server = app.server
 
+# ---------------------------------------------------
+# 데이터
+# ---------------------------------------------------
+SUBWAY_UP = [
+    "09:04","09:18","09:34","09:53","10:08","10:28","10:45","11:03","11:20",
+    "11:39","11:55","12:13","12:35","12:52","13:12","13:28","13:49","14:07",
+    "14:25","14:43","15:02","15:22","15:38","15:56","16:13","16:28","16:46",
+    "17:03","17:19","17:36","17:53","18:10","18:23","18:41","18:59","19:13",
+    "19:29","19:50","20:04","20:21","20:38","20:57"
+]
 
-# -------------------------
-# 5. get_relevant_documents (간결 최적화)
-# -------------------------
-def get_relevant_documents(query: str):
-    return ensemble_retriever.invoke(query)
+SUBWAY_DOWN = [
+    "09:10","09:25","09:42","09:58","10:15","10:32","10:52","11:10","11:29",
+    "11:47","12:05","12:25","12:42","13:00","13:18","13:36","13:55","14:15",
+    "14:35","14:55","15:15","15:35","15:55","16:15","16:32","16:50","17:08",
+    "17:25","17:42","17:58","18:15","18:32","18:50","19:08","19:25","19:45",
+    "20:05","20:25","20:45"
+]
 
+ACADEMIC_CALENDAR = {
+    "11": [("11.03(일)", "수업일수 2/3선")],
+    "12": [("12.08(월) ~ 12(금)", "기말고사"),
+           ("12.15(월)~19(금)", "보강기간"),
+           ("12.22(월)", "동계 계절학기"),
+           ("12.25(목)", "성탄절")],
+    "1":  [("01.01(목)", "신정"),
+           ("01.02(금) ~ 08(목)", "복학 집중신청")],
+    "2":  [("02.03(화) ~ 04(수)", "장바구니 신청"),
+           ("02.10(화) ~ 11(수)", "본 수강신청"),
+           ("02.12(목)", "학위수여식")]
+}
 
-# -------------------------
-# 6. Gemini LLM
-# -------------------------
-if "GOOGLE_API_KEY" not in st.secrets:
-    st.error("GOOGLE_API_KEY가 없습니다. Streamlit Secrets에 등록해주세요.")
-    st.stop()
-
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-
-system_message = """
-당신은 한국항공대학교 안내 챗봇입니다.
-문서의 내용에 기반하여 신뢰도 높은 답변을 제공해야 합니다.
-
-[매우 중요] 출처 표기 규칙:
-1. 답변 생성 후, 반드시 자신이 주요 근거로 사용한 '문서 N'의 번호를 [근거: N] 형태로 붙이세요.
-"""
-
-
-def get_gemini_response_stream(prompt: str):
+def get_kau_menu():
     try:
-        model = genai.GenerativeModel("gemini-2.5-pro")
-        stream = model.generate_content(prompt, stream=True)
-        for chunk in stream:
-            try:
-                yield chunk.text
-            except Exception:
-                continue
-    except Exception as e:
-        st.error(f"Gemini 오류: {e}")
-        yield ""
+        requests.get("https://kau.ac.kr/kaulife/foodmenu.php", verify=False, timeout=2)
+        return True
+    except:
+        return False
 
-# -------------------------
-# 7. Streamlit UI
-# -------------------------
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# ---------------------------------------------------
+# 버튼용 카드 UI 함수들
+# ---------------------------------------------------
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+def card_food():
+    return html.Div(
+        className="ai-card",
+        children=[
+            html.Div("🍱 오늘의 학생식당 메뉴", className="card-title"),
+            html.Div("학교 홈페이지에서 실시간 식단표를 가져왔습니다.", className="card-desc"),
+            dbc.Button(
+                "이번 주 전체 메뉴 보기",
+                href="https://kau.ac.kr/kaulife/foodmenu.php",
+                target="_blank",
+                className="card-btn-yellow"
+            ),
+        ]
+    )
 
-if user_input := st.chat_input("질문을 입력하세요."):
+def card_subway(now, up, down):
+    return html.Div(
+        className="ai-card",
+        children=[
+            html.Div(f"🚇 한국항공대역 실시간 기준 시간표 ({now})", className="card-title"),
 
-    st.session_state.messages.append({"role": "user", "content": user_input})
+            html.Div([
+                html.Div("서울/용산행 (UP)", className="small-title"),
+                html.Div(", ".join(up) if up else "운행 종료", className="time-text"),
+            ], className="mt-2"),
 
-    with st.chat_message("user"):
-        st.markdown(user_input)
+            html.Div([
+                html.Div("일산/문산행 (DOWN)", className="small-title"),
+                html.Div(", ".join(down) if down else "운행 종료", className="time-text"),
+            ], className="mt-2"),
+        ]
+    )
 
-    with st.chat_message("assistant"):
-        full = ""
+def card_academic():
+    return html.Div(
+        className="ai-card",
+        children=[
+            html.Div("📅 다가오는 주요 학사일정", className="card-title"),
 
-        with st.spinner("답변을 생각하고 있어요... 🤔"):
+            html.Div([
+                html.Div("12월", className="month-label"),
+                html.Ul([
+                    html.Li("12.08(월) ~ 12(금) : 2학기 기말고사"),
+                    html.Li("12.15(월) ~ 19(금) : 보강 기간"),
+                    html.Li("12.22(월) : 동계 계절학기 개강"),
+                    html.Li("12.25(목) : 성탄절"),
+                ]),
+            ], className="mt-2"),
 
-            combined_query = user_input.strip()
-            # 터미널에 출력하는 부분 (필요하면 주석 지우고 사용)
-            #print("=" * 50)
-            #print(f"Query: {combined_query}")
-            
-            # ------------------------------
-            # BM25 검색 (10개)
-            # ------------------------------
-            bm25_only = bm25_retriever.invoke(combined_query)
-            bm25_seen = set()
-            bm25_unique = []
+            html.Div([
+                html.Div("1월 (2026)", className="month-label"),
+                html.Ul([
+                    html.Li("01.01(목) : 신정"),
+                    html.Li("01.02(금) ~ 08(목) : 복학 집중신청"),
+                ]),
+            ], className="mt-2"),
+        ]
+    )
 
-            for d in bm25_only:
-                key = f"{d.metadata.get('source','')}_{d.metadata.get('title','')}"
-                if key not in bm25_seen:
-                    bm25_seen.add(key)
-                    bm25_unique.append(d)
-                if len(bm25_unique) >= 10:
-                    break
-            #검색 결과 터미널에 출력하는 부분
-            #print("\n--- 🟡 BM25 검색 결과 ---")
-            #for i, d in enumerate(bm25_unique, 1):
-            #    print(f"[BM25 {i}] {d.metadata.get('title')}")
-            
-            # ------------------------------
-            # FAISS 검색 (10개)
-            # ------------------------------
-            faiss_only = faiss_retriever.invoke(combined_query)
-            faiss_seen = set()
-            faiss_unique = []
+def card_library():
+    return html.Div(
+        className="ai-card",
+        children=[
+            html.Div("📚 실시간 좌석 정보는 아래 링크에서 확인해주세요!", className="card-title"),
+            dbc.Button(
+                "좌석 현황 실시간 보기",
+                href="http://210.119.25.31/Webseat/domian5.asp",
+                target="_blank",
+                className="card-btn-green"
+            ),
+        ]
+    )
 
-            for d in faiss_only:
-                key = f"{d.metadata.get('source','')}_{d.metadata.get('title','')}"
-                if key not in faiss_seen:
-                    faiss_seen.add(key)
-                    faiss_unique.append(d)
-                if len(faiss_unique) >= 10:
-                    break
-            #검색 결과 터미널에 출력
-            #print("\n--- 🔵 FAISS 검색 결과 ---")
-            #for i, d in enumerate(faiss_unique, 1):
-            #    print(f"[FAISS {i}] {d.metadata.get('title')}")
-            
-            # ------------------------------
-            # 앙상블 최종
-            # ------------------------------
-            docs = get_relevant_documents(combined_query)
+# AI 말풍선 하나를 그리는 공통 함수
+def render_ai_message(msg):
+    t = msg.get("type")
+    if t == "food":
+        body = card_food()
+        bubble_child = html.Div(body, className="ai-bubble")
+    elif t == "subway":
+        body = card_subway(msg.get("time", ""), msg.get("up", []), msg.get("down", []))
+        bubble_child = html.Div(body, className="ai-bubble")
+    elif t == "academic":
+        body = card_academic()
+        bubble_child = html.Div(body, className="ai-bubble")
+    elif t == "library":
+        body = card_library()
+        bubble_child = html.Div(body, className="ai-bubble")
+    else:
+        # 기본 텍스트 응답
+        bubble_child = dcc.Markdown(str(msg.get("content", "")), className="ai-bubble")
 
-            # 🔥 최종 중복 제거
-            final_seen = set()
-            unique_final_docs = []
+    return html.Div([
+        html.Img(src="/assets/mascot.png", className="profile-img"),
+        html.Div([
+            html.Div("마하", className="ai-name"),
+            bubble_child
+        ])
+    ], className="message-row ai-row")
 
-            for d in docs:
-                key = f"{d.metadata.get('source','')}_{d.metadata.get('title','')}"
-                if key not in final_seen:
-                    final_seen.add(key)
-                    unique_final_docs.append(d)
-            #터미널에 출력하는 부분
-            #print("\n--- 🔴 앙상블 최종 검색 결과 ---")
-            #for i, d in enumerate(unique_final_docs, 1):
-            #    print(f"[FINAL {i}] [{d.metadata.get('title')}] ({d.metadata.get('source')})")
+# ---------------------------------------------------
+# PC / 모바일 사이드바
+# ---------------------------------------------------
 
-            #print("====================================================")
-            
-            # 이후 LLM 문맥 생성 시에도 unique_final_docs 사용
-            context = ""
-            for i, d in enumerate(unique_final_docs):
-                context += f"--- 문서 {i+1} ---\n"
-                context += f"제목: {d.metadata.get('title')}\n"
-                context += f"출처: {d.metadata.get('source')}\n"
-                context += d.metadata.get("raw_content", d.page_content) + "\n\n"
+sidebar_tabs = html.Div([
+    html.H4("KAU 챗봇", className="text-primary fw-bold mb-4"),
 
-            # LLM 프롬프트 생성도 이걸로 유지됨
+    dbc.Tabs([
+        dbc.Tab(label="사용법", tab_id="tab-usage", children=[
+            html.P("👋 안녕하세요! 한국항공대 AI 도우미입니다.")
+        ]),
 
-            final_prompt = (
-                system_message
-                + "\n\n[Context]\n"
-                + context
-                + f"\n\n[사용자 질문]\n{user_input}"
-                + "\n\n[답변] (출처 표기 규칙을 반드시 지켜주세요.)"
+        dbc.Tab(label="지난 기록", tab_id="tab-history", children=[
+            html.Div(
+                id="history-list",
+                className="mt-3",
+                style={"cursor": "pointer", "fontSize": "0.9rem"}
+            ),
+        ]),
+    ], id="tabs-pc", active_tab="tab-usage"),
+
+    html.Div(
+        dbc.Button("🗑 기록 전체 삭제", id="clear-history",
+                   color="danger", className="w-100 mt-3"),
+        id="clear-btn-wrapper-pc",
+        style={"display": "none"}
+    )
+], className="sidebar")
+
+sidebar_tabs_mobile = html.Div([
+    html.H4("KAU 챗봇", className="text-primary fw-bold mb-4"),
+
+    dbc.Tabs([
+        dbc.Tab(label="사용법", tab_id="tab-usage", children=[
+            html.P("👋 안녕하세요! 한국항공대 AI 도우미입니다.")
+        ]),
+
+        dbc.Tab(label="지난 기록", tab_id="tab-history", children=[
+            html.P("기록은 오른쪽 화면에서 선택하세요.",
+                   className="text-muted small mt-3")
+        ]),
+    ], id="tabs-mobile", active_tab="tab-usage"),
+
+    html.Div(
+        dbc.Button("🗑 기록 전체 삭제", id="clear-history-mobile",
+                   color="danger", className="w-100 mt-3"),
+        id="clear-btn-wrapper-mobile",
+        style={"display": "none"}
+    )
+])
+
+# ---------------------------------------------------
+# 레이아웃
+# ---------------------------------------------------
+
+app.layout = dbc.Container([
+    dcc.Store(id='chat-history-store', data=[], storage_type="local"),
+
+    dbc.Offcanvas(
+        [sidebar_tabs_mobile],
+        id="offcanvas",
+        title="메뉴",
+        is_open=False
+    ),
+
+    dbc.Row([
+        dbc.Col([sidebar_tabs], width=3, className="d-none d-md-block p-0"),
+
+        dbc.Col([
+            dbc.Row([
+                dbc.Col([
+                    dbc.Button("☰", id="open-offcanvas", n_clicks=0,
+                               color="link", className="d-md-none",
+                               style={"fontSize": "1.5rem"}),
+                    html.H2("KAU 챗봇 Service",
+                            className="d-inline-block mt-4 mb-4 fw-bold",
+                            style={"color": "#002d62"})
+                ], className="d-flex align-items-center justify-content-center")
+            ]),
+
+            dcc.Loading(
+                id="loading-chat",
+                type="circle",
+                color="#002d62",
+                fullscreen=False,
+                children=html.Div(
+                    id="chat-display",
+                    className="chat-container mb-3"
+                )
+            ),
+
+            html.Div([
+                dbc.Button("🍱 오늘 학식", id="btn-food", size="sm", className="m-1 rounded-pill"),
+                dbc.Button("🚇 지하철시간", id="btn-subway", size="sm", className="m-1 rounded-pill"),
+                dbc.Button("📅 학사일정", id="btn-calendar", size="sm", className="m-1 rounded-pill"),
+                dbc.Button("📚 도서관자리", id="btn-library", size="sm", className="m-1 rounded-pill"),
+            ], className="mb-2 d-flex justify-content-center flex-wrap"),
+
+            dbc.Row([
+                dbc.Col(
+                    dbc.Input(id="user-input", placeholder="질문을 입력하세요...",
+                              type="text", style={"borderRadius": "25px"}),
+                    width=10, xs=9),
+                dbc.Col(
+                    dbc.Button("전송", id="send-btn", color="primary",
+                               className="w-100", style={"borderRadius": "25px"}),
+                    width=2, xs=3),
+            ], className="g-2"),
+
+            html.Div(
+                "※ AI 답변은 부정확할 수 있습니다.",
+                className="text-center text-muted mt-3 mb-4",
+                style={"fontSize": "0.75rem"}
             )
+        ], width=12, md=9, className="px-4")
+    ])
+], fluid=True)
 
-            placeholder = st.empty()
+# ---------------------------------------------------
+# 콜백
+# ---------------------------------------------------
 
-            for t in get_gemini_response_stream(final_prompt):
-                full += t
-                placeholder.markdown(full + "▌")
+# 1) 모바일 메뉴 토글
+@app.callback(
+    Output("offcanvas", "is_open"),
+    Input("open-offcanvas", "n_clicks"),
+    State("offcanvas", "is_open")
+)
+def toggle_menu(n, is_open):
+    if n:
+        return not is_open
+    return is_open
 
-        # -------------------------
-        # 근거 태그 파싱
-        # -------------------------
-        source_matches = re.findall(r"\[근거:\s*([\d,\s]+)\]", full)
-        final_content = re.sub(r"\[근거:[^\]]*\]", "", full).strip()
+# 2) 탭에 따라 삭제 버튼 표시 (PC)
+@app.callback(
+    Output("clear-btn-wrapper-pc", "style"),
+    Input("tabs-pc", "active_tab")
+)
+def toggle_clear_btn_pc(active_tab):
+    if active_tab == "tab-history":
+        return {"display": "block"}
+    return {"display": "none"}
 
-        footer_items = []
-        used_indexes = set()
+# 3) 탭에 따라 삭제 버튼 표시 (모바일)
+@app.callback(
+    Output("clear-btn-wrapper-mobile", "style"),
+    Input("tabs-mobile", "active_tab")
+)
+def toggle_clear_btn_mobile(active_tab):
+    if active_tab == "tab-history":
+        return {"display": "block"}
+    return {"display": "none"}
 
-        if source_matches:
-            try:
-                for match in source_matches:
-                    indexes = match.replace(" ", "").split(",")
+# 4) 기록 전체 삭제
+@app.callback(
+    Output("chat-history-store", "data", allow_duplicate=True),
+    [Input("clear-history", "n_clicks"),
+     Input("clear-history-mobile", "n_clicks")],
+    prevent_initial_call=True
+)
+def clear_history(pc, mobile):
+    return []
 
-                    for idx in indexes:
-                        if not idx.isdigit():
-                            continue
+# 5) 지난 기록 목록 생성 (왼쪽 탭 리스트)
+@app.callback(
+    Output("history-list", "children"),
+    Input("chat-history-store", "data")
+)
+def update_history_list(history):
+    if not history:
+        return []
+    return [
+        html.Div(
+            f"• {msg['content']}",
+            className="text-primary mb-2",
+            id={"type": "history-item", "index": i},
+            n_clicks=0
+        )
+        for i, msg in enumerate(history)
+        if msg.get("speaker") == "user"
+    ]
 
-                        num = int(idx)
-                        if num in used_indexes:
-                            continue
-                        used_indexes.add(num)
+# 6) 지난 기록 클릭 → 대화 한 쌍만 표시
+@app.callback(
+    Output("chat-display", "children", allow_duplicate=True),
+    Input({"type": "history-item", "index": ALL}, "n_clicks"),
+    State("chat-history-store", "data"),
+    prevent_initial_call=True
+)
+def load_history(clicks, history):
+    if not clicks or all(c == 0 for c in clicks):
+        return dash.no_update
 
-                        doc_index = num - 1
+    ctx = callback_context
+    if not ctx.triggered:
+        return dash.no_update
 
-                        if 0 <= doc_index < len(docs):
-                            doc_to_cite = docs[doc_index]
-                            source_url = doc_to_cite.metadata.get("source")
-                            source_title = doc_to_cite.metadata.get("title", "제목 없음")
-                            attachment_str = doc_to_cite.metadata.get("attachments")
+    clicked_id = ctx.triggered_id
+    if not clicked_id:
+        return dash.no_update
 
-                            if source_url:
-                                footer_items.append(f"- [{source_title}]({source_url})")
+    idx = clicked_id["index"]
+    if idx >= len(history):
+        return dash.no_update
 
-                            if attachment_str:
-                                first_item = attachment_str.split(";")[0]
-                                parts = first_item.split("|")
-                                if len(parts) == 2:
-                                    filename, file_url = parts
-                                    footer_items.append(
-                                        f"- 📁 [{filename} (첨부파일)]({file_url})"
-                                    )
+    user_msg = history[idx]
+    ai_msg = history[idx + 1] if idx + 1 < len(history) else None
 
-            except Exception as e:
-                print(f"근거 태그 처리 중 오류: {e}")
+    ui = [
+        html.Div(
+            [html.Div(user_msg["content"], className="user-bubble")],
+            className="message-row user-row"
+        )
+    ]
 
-        footer_items = list(dict.fromkeys(footer_items))
+    if ai_msg:
+        ui.append(render_ai_message(ai_msg))
 
-        if footer_items:
-            final_content += "\n\n---\n**참고한 출처:**\n" + "\n".join(footer_items)
+    return ui
 
-        placeholder.markdown(final_content)
-        st.session_state.messages.append({"role": "assistant", "content": final_content})
+# 7) 질문 → 응답 생성 및 전체 채팅 렌더링
+@app.callback(
+    [Output("chat-display", "children", allow_duplicate=True),
+     Output("user-input", "value"),
+     Output("chat-history-store", "data", allow_duplicate=True)],
+    [Input("send-btn", "n_clicks"),
+     Input("user-input", "n_submit"),
+     Input("btn-food", "n_clicks"),
+     Input("btn-subway", "n_clicks"),
+     Input("btn-calendar", "n_clicks"),
+     Input("btn-library", "n_clicks")],
+    [State("user-input", "value"),
+     State("chat-history-store", "data")],
+    prevent_initial_call=True
+)
+def update_chat(send, enter, food, subway, cal, lib, user_input, history):
+    ctx = callback_context
+    if not ctx.triggered:
+        return dash.no_update, "", dash.no_update
+
+    if history is None:
+        history = []
+
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    user_text = ""
+
+    if trigger in ["send-btn", "user-input"]:
+        user_text = user_input
+    elif trigger == "btn-food":
+        user_text = "오늘 학식 뭐야?"
+    elif trigger == "btn-subway":
+        user_text = "지하철 시간표 알려줘"
+    elif trigger == "btn-calendar":
+        user_text = "학사일정 알려줘"
+    elif trigger == "btn-library":
+        user_text = "도서관 자리 있어?"
+
+    if not user_text:
+        return dash.no_update, "", dash.no_update
+
+    # 사용자 메시지 저장
+    history.append({"speaker": "user", "content": user_text})
+
+    # AI 응답 생성 (type 기반)
+    ai_entry = {"speaker": "ai"}
+
+    if "학식" in user_text:
+        get_kau_menu()
+        ai_entry["type"] = "food"
+
+    elif "지하철" in user_text:
+        now = datetime.now().strftime("%H:%M")
+        up = [t for t in SUBWAY_UP if t > now][:3]
+        down = [t for t in SUBWAY_DOWN if t > now][:3]
+        ai_entry.update({
+            "type": "subway",
+            "time": now,
+            "up": up,
+            "down": down
+        })
+
+    elif "도서관" in user_text:
+        ai_entry["type"] = "library"
+
+    elif "학사" in user_text or "일정" in user_text:
+        ai_entry["type"] = "academic"
+
+    else:
+        try:
+            text = rag_core.get_ai_response(user_text)
+        except Exception:
+            text = "오류가 발생했습니다."
+        ai_entry.update({
+            "type": "text",
+            "content": text
+        })
+
+    history.append(ai_entry)
+
+    # 화면 다시 그리기
+    chat_view = []
+    for msg in history:
+        if msg.get("speaker") == "user":
+            chat_view.append(
+                html.Div(
+                    [html.Div(msg["content"], className="user-bubble")],
+                    className="message-row user-row"
+                )
+            )
+        else:
+            chat_view.append(render_ai_message(msg))
+
+    return chat_view, "", history
 
 
-
-
-
+if __name__ == "__main__":
+    app.run(debug=True)
